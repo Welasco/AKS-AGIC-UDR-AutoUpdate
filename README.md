@@ -12,7 +12,7 @@ Table of Contents
 
 4. [Network topology](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#3-network-topology)
 
-5. [Synchronizing AKS egree control UDR with Application Gateway UDR](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#5-synchronizing-aks-egree-control-udr-with-application-gateway-udr)
+5. [Synchronizing AKS egress control UDR with Application Gateway UDR](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#5-synchronizing-aks-egress-control-udr-with-application-gateway-udr)
 
 6. [Considerations](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#6-considerations)
 
@@ -73,7 +73,7 @@ In a secure deployment Application Gateway and AKS (using egress control) will b
 
 In this case it's required to create a dedicated UDR for Application Gateway subnet but it brings a challenge to keep the AKS (kubenet) auto managed UDR to be in sync with Application Gateway UDR.
 
-## 5. Synchronizing AKS egree control UDR with Application Gateway UDR
+## 5. Synchronizing AKS egress control UDR with Application Gateway UDR
 
 Every time there is an event of scale in the AKS cluster a new route entry will be automatically created in the AKS UDR with the POD address space of the new Node. This route is required for Application Gateway be able to access the backend POD to proxy the traffic. The same process happen when there is an event of scale-in where an AKS Node is removed from the cluster.
 
