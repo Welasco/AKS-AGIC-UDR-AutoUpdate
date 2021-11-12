@@ -1,7 +1,26 @@
 Using AKS kubenet egrees control with AGIC
 ==========================================
 
+Table of Contents
+=================
 
+1. [Network Plugins](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#1-network-plugins)
+
+2. [IP address availability and exhaustion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#2-ip-address-availability-and-exhaustion)
+
+3. [AGIC (Application Gateway Ingress Controller)](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#3-agic-application-gateway-ingress-controller)
+
+4. [Network topology](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#3-network-topology)
+
+5. []()
+
+6. []()
+
+7. []()
+
+8. []()
+
+8. []()
 
 ## 1. Network Plugins
 AKS offers two network plugins [kubenet](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#kubenet) and [CNI](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#cni).
@@ -45,14 +64,14 @@ Ingress Controller is supported exclusively by Standard_v2 and WAF_v2 SKUs, whic
 
 ***Since Application Gateway doesn't support UDR with a route 0.0.0.0/0 and it's a requirement for AKS egress control [you cannot use the same UDR for both subnets](https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/how-tos/networking.md#with-kubenet) (Application Gateway subnet and AKS subnet).***
 
-## 3. Network topology
+## 4. Network topology
 In a secure deployment Application Gateway and AKS (using egress control) will be on its own subnet and as described above it's not possible to share the same UDR for both of them.
 
 ![AKS-private-cluster-scenario](media/AKS-private-cluster-scenario.jpg)
 
 In this case it's required to create a dedicated UDR for Application Gateway subnet but it brings a challenge to keep the AKS (kubenet) auto managed UDR to be in sync with Application Gateway UDR.
 
-## 4. Synchronizing AKS egree control UDR with Application Gateway UDR
+## 5. Synchronizing AKS egree control UDR with Application Gateway UDR
 
 Every time there is an event of scale in the AKS cluster a new route entry will be automatically created in the AKS UDR with the POD address space of the new Node. This route is required for Application Gateway be able to access the backend POD to proxy the traffic. The same process happen when there is an event of scale-in where an AKS Node is removed from the cluster.
 
@@ -60,7 +79,7 @@ Using Azure Monitor Alerts is possible to create an Alert Rule to trigger an Aut
 
 By following his approach you can safely use AKS egress control with AGIC in a auto managed scenario.
 
-## 5. Automation Account
+## 6. Automation Account
 
 Create an Automation Account following the steps bellow:
 
@@ -106,7 +125,7 @@ Create an Automation Account following the steps bellow:
 
     ![10](media/10.png)
 
-## 6. Azure Monitor - Alert Rule
+## 7. Azure Monitor - Alert Rule
 
 Create a Azure Monitor Aler Rule to invoke the Runbook for any change/event in AKS UDR.
 
@@ -199,7 +218,7 @@ Create a Azure Monitor Aler Rule to invoke the Runbook for any change/event in A
 
     ![36](media/36.png)
 
-## 7. Confirmation and test
+## 8. Confirmation and test
 
 You now have a Runbook with an Alert Rule. The Runbook will be executed everything single time a change happen in AKS UDR. In the steps bellow you will confirm that everthing is worked as expected by scaling in/out your AKS cluster.
 
@@ -243,6 +262,6 @@ You now have a Runbook with an Alert Rule. The Runbook will be executed everythi
 
     ![46](media/46.png)
 
-## 8. Conclusion
+## 9. Conclusion
 
 Until Azure Application Gateway V2 (which is a requirement for AGIC) supports a UDR with routing 0.0.0.0/0, it's very hard to use AKS with kubenet network plugin since it depends on the Azure Route Tables (UDR) to route traffic to respective PODs in a Node. Using the approach above you can achieve an auto managed environment by keeping the Application Gateway UDR always in sync with AKS UDR Node routes.
