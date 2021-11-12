@@ -14,13 +14,15 @@ Table of Contents
 
 5. [Synchronizing AKS egree control UDR with Application Gateway UDR](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#5-synchronizing-aks-egree-control-udr-with-application-gateway-udr)
 
-6. [Automation Account](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#6-automation-account)
+6. [Considerations](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#6-considerations)
 
-7. [Azure Monitor - Alert Rule](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#7-azure-monitor---alert-rule)
+7. [Automation Account](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#7-automation-account)
 
-8. [Confirmation and test](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#8-confirmation-and-test)
+8. [Azure Monitor - Alert Rule](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#8-azure-monitor---alert-rule)
 
-9. [Conclusion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#9-conclusion)
+9. [Confirmation and test](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#9-confirmation-and-test)
+
+10. [Conclusion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#10-conclusion)
 
 ## 1. Network Plugins
 AKS offers two network plugins [kubenet](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#kubenet) and [CNI](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#cni).
@@ -79,7 +81,11 @@ Using Azure Monitor Alerts is possible to create an Alert Rule to trigger an Aut
 
 By following his approach you can safely use AKS egress control with AGIC in a auto managed scenario.
 
-## 6. Automation Account
+## 6. Considerations
+
+This article assume you are using AKS with VMSS not VMs. The PowerShell runbook are filtering the routes based in the name of the VMSS instance name considering it will start with "aks*" and it contains "*vmss*" in the name of each route. Any other route not matching the filter will not be evaluated.
+
+## 7. Automation Account
 
 Create an Automation Account following the steps bellow:
 
@@ -125,7 +131,7 @@ Create an Automation Account following the steps bellow:
 
     ![10](media/10.png)
 
-## 7. Azure Monitor - Alert Rule
+## 8. Azure Monitor - Alert Rule
 
 Create a Azure Monitor Aler Rule to invoke the Runbook for any change/event in AKS UDR.
 
@@ -218,7 +224,7 @@ Create a Azure Monitor Aler Rule to invoke the Runbook for any change/event in A
 
     ![36](media/36.png)
 
-## 8. Confirmation and test
+## 9. Confirmation and test
 
 You now have a Runbook with an Alert Rule. The Runbook will be executed everything single time a change happen in AKS UDR. In the steps bellow you will confirm that everthing is worked as expected by scaling in/out your AKS cluster.
 
@@ -262,6 +268,6 @@ You now have a Runbook with an Alert Rule. The Runbook will be executed everythi
 
     ![46](media/46.png)
 
-## 9. Conclusion
+## 10. Conclusion
 
 Until Azure Application Gateway V2 (which is a requirement for AGIC) supports a UDR with routing 0.0.0.0/0, it's very hard to use AKS with kubenet network plugin since it depends on the Azure Route Tables (UDR) to route traffic to respective PODs in a Node. Using the approach above you can achieve an auto managed environment by keeping the Application Gateway UDR always in sync with AKS UDR Node routes.
