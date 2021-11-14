@@ -4,86 +4,94 @@ Using AKS kubenet egrees control with AGIC
 Table of Contents
 =================
 
-1. [Network Plugins](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#1-network-plugins)
+0. [Executive Summary](#0-executive-summary)
 
-2. [IP address availability and exhaustion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#2-ip-address-availability-and-exhaustion)
+1. [Network Plugins](#1-network-plugins)
 
-3. [AGIC (Application Gateway Ingress Controller)](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#3-agic-application-gateway-ingress-controller)
+2. [IP address availability and exhaustion](#2-ip-address-availability-and-exhaustion)
 
-4. [Network topology](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#3-network-topology)
+3. [AGIC (Application Gateway Ingress Controller)](#3-AGIC-application-gateway-ingress-controller)
 
-5. [Synchronizing AKS egress control UDR with Application Gateway UDR](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#5-synchronizing-aks-egress-control-udr-with-application-gateway-udr)
+4. [Network topology](#4-network-topology)
 
-6. [Considerations](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#6-considerations)
+5. [Synchronizing AKS egress control UDR with Application Gateway UDR](#5-synchronizing-aks-egress-control-udr-with-application-gateway-udr)
 
-7. [Automation Account](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#7-automation-account)
+6. [Considerations](#6-considerations)
 
-8. [Azure Monitor - Alert Rule](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#8-azure-monitor---alert-rule)
+7. [Automation Account](#7-automation-account)
 
-9. [Confirmation and test](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#9-confirmation-and-test)
+8. [Azure Monitor - Alert Rule](#8-azure-monitor---alert-rule)
 
-10. [Conclusion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#10-conclusion)
+9. [Confirmation and test](#9-confirmation-and-test)
+
+10. [Conclusion](#10-conclusion)
+
+## 0. Executive Summary
+
+When using kubenet as network plugin of an AKS cluster (for example, because IP addresses are a scarce resource in an organization) along with the Application Gateway Ingress Controller, in certain situations it is required to automatically synchronize the state of two route tables. This can be achieved using Azure Automation runbooks, which will find out the routing changes configured by AKS in the Microsoft-managed route table applied to the AKS cluster subnet, and replicate them  to a second, user-managed route table applied to the Application Gateway subnet.
 
 ## 1. Network Plugins
-AKS offers two network plugins [kubenet](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#kubenet) and [CNI](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#cni).
 
-- kubenet: By default, AKS clusters use kubenet, and an Azure virtual network and subnet are created for you. With kubenet, nodes get an IP address from the Azure virtual network subnet. Pods receive an IP address from a logically different address space to the Azure virtual network subnet of the nodes. Network address translation (NAT) is then configured so that the pods can reach resources on the Azure virtual network. The source IP address of the traffic is NAT'd to the node's primary IP address. This approach greatly reduces the number of IP addresses that you need to reserve in your network space for pods to use.
+Kubernetes code does not include networking functionality, but instead relies in so called [network plugins](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/) to provide connectivity between nodes and pods. AKS offers two network plugins: [kubenet](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#kubenet) and [Azure CNI](https://docs.microsoft.com/azure/aks/configure-azure-cni), which is a type of [Kubernetes CNI plugin](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/#cni).
 
-    With kubenet, only the nodes receive an IP address in the virtual network subnet. Pods can't communicate directly with each other. Instead, User Defined Routing (UDR) and IP forwarding is used for connectivity between pods across nodes. By default, UDRs and IP forwarding configuration is created and maintained by the AKS service, but you have to the option to bring your own route table for custom route management. You could also deploy pods behind a service that receives an assigned IP address and load balances traffic for the application. The following diagram shows how the AKS nodes receive an IP address in the virtual network subnet, but not the pods:
+- **kubenet**: By default, AKS clusters use kubenet, and an Azure virtual network and subnet are created for you. With kubenet, nodes get an IP address from the Azure virtual network subnet. Pods receive an IP address from a logically different address space to the Azure virtual network subnet of the nodes. Since the rest of the network is unaware of the pod IP address space, Network address translation (NAT) is required so that the pods can reach resources on the Azure virtual network. The source IP address of the traffic is NAT'd to the node's primary IP address. This approach greatly reduces the number of IP addresses that you need to reserve in your network space for pods to use.
+
+    However, for intra-cluster communication NAT is not a solution, since it would prevent bidirectional communication between pods. Instead, [User-Defined Routes (UDR)](https://docs.microsoft.com/azure/virtual-network/virtual-networks-udr-overview#user-defined) in an Azure Route Table are used that tell each node where to forward packets with destination IPs in the pod address space. By default, the route table that contains these UDRs is created and maintained by the AKS service, but you have to the option to bring your own route table for custom route management (for example, if you need to specify a default route of your own). The following diagram shows how the AKS nodes receive an IP address in the virtual network subnet, but not the pods:
 
     ![kubenet-overview](media/kubenet-overview.png)
 
-- CNI: With [Azure Container Networking Interface (CNI)](https://github.com/Azure/azure-container-networking/blob/master/docs/cni.md), every pod gets an IP address from the subnet and can be accessed directly. These IP addresses must be unique across your network space, and must be planned in advance. Each node has a configuration parameter for the maximum number of pods that it supports. The equivalent number of IP addresses per node are then reserved up front for that node. This approach requires more planning, and often leads to IP address exhaustion or the need to rebuild clusters in a larger subnet as your application demands grow. You can configure the maximum pods deployable to a node at cluster create time or when creating new node pools. If you don't specify maxPods when creating new node pools, you receive a default value of 110 for kubenet.
+- **Azure CNI**: With [Azure Container Networking Interface (CNI)](https://github.com/Azure/azure-container-networking/blob/master/docs/cni.md), every pod gets an IP address from the subnet and can be accessed directly. These IP addresses are unique across the network space, and must be planned in advance. Each node has a configuration parameter for the maximum number of pods that it supports. The equivalent number of IP addresses per node are then reserved up front for that node. This approach requires more planning, and can lead to IP address exhaustion or the need to rebuild clusters in a larger subnet as your application demands grow. You can configure the maximum pods deployable to a node at cluster create time or when creating new node pools. If you don't specify maxPods when creating new node pools, you receive a default value of 30 for Azure CNI.
 
 ## 2. IP address availability and exhaustion
-With Azure CNI, a common issue is the assigned IP address range is too small to then add additional nodes when you scale or upgrade a cluster. The network team may also not be able to issue a large enough IP address range to support your expected application demands.
 
-As a compromise, you can create an AKS cluster that uses kubenet and connect to an existing virtual network subnet. This approach lets the nodes receive defined IP addresses, without the need to reserve a large number of IP addresses up front for all of the potential pods that could run in the cluster.
+With Azure CNI, a common challenge is that the network team may not be able to provide a large enough IP address range for the subnet to support the cluster requirements. If IP addresses are exhausted in the AKS subnet, undesired effects include the inability to scale or upgrade a cluster. Hence many organization with limited IP address availability turn to kubenet as their plugin of choice. Note that Microsoft is working in a new version of the Azure CNI plugin that will separate the pod and the node IP address spaces, hence reducing the impact of IP address exhaustion: see [Dynamic allocation of IPs and enhanced subnet support (preview)](https://docs.microsoft.com/azure/aks/configure-azure-cni#dynamic-allocation-of-ips-and-enhanced-subnet-support-preview) for more information.
 
-With kubenet, you can use a much smaller IP address range and be able to support large clusters and application demands. For example, even with a /27 IP address range on your subnet, you could run a 20-25 node cluster with enough room to scale or upgrade. This cluster size would support up to 2,200-2,750 pods (with a default maximum of 110 pods per node). The maximum number of pods per node that you can configure with kubenet in AKS is 110.
+The following basic calculations compare the difference in network IP address consumption:
 
-The following basic calculations compare the difference in network models:
+- kubenet: `<max_nodes> = (2^<mask_length> - 5) - 1`
+    For example, a subnet with a /24 IP address range can support up to 250 nodes in the cluster, leaving 1 free space for AKS update operations (each Azure virtual network subnet reserves 5 IP addresses: the all-zeros and all-ones as per the IP standard, and the first three non-zero IP addresses for management operations). This node count could support up to 27,500 pods (with a default maximum of 110 pods per node with kubenet). In this calculation I am ignoring potential IP addresses that would be taken up by Kubernetes LoadBalancer-type services, since those can be deployed to a separate subnet.
+- Azure CNI: `<max_nodes> = (2^<mask_length> - 5) \ (<pods_per_node> + 1) - 1`
+    that same basic /24 subnet range could only support a maximum of 7 nodes in the cluster with Azure CNI, since the pods take part of the IP address space. For example, with the default of 30 pods per node, each node would take up 31 IPs (the `<pods_per_node> + 1` in the equation above), so you would only have space for 8 nodes. Since you need to leave space for at least another node for AKS upgrade operations, you get the 7 nodes. With 30 pods per node, you end up in 210 pods out the same IP address space.
 
-- kubenet - a simple /24 IP address range can support up to 251 nodes in the cluster (each Azure virtual network subnet reserves the first three IP addresses for management operations)
-This node count could support up to 27,610 pods (with a default maximum of 110 pods per node with kubenet)
-- Azure CNI - that same basic /24 subnet range could only support a maximum of 8 nodes in the cluster
-This node count could only support up to 240 pods (with a default maximum of 30 pods per node with Azure CNI)
+Hence, if IP address space is a scarce resource in an organization, kubenet is a much more efficient plugin in terms of pods per consumed IP address.
 
 ## 3. AGIC (Application Gateway Ingress Controller)
-The Application Gateway Ingress Controller (AGIC) is a Kubernetes application, which makes it possible for [Azure Kubernetes Service (AKS)](https://azure.microsoft.com/services/kubernetes-service/) customers to leverage Azure's native [Application Gateway](https://azure.microsoft.com/services/application-gateway/) L7 load-balancer to expose cloud software to the Internet. AGIC monitors the Kubernetes cluster it is hosted on and continuously updates an Application Gateway, so that selected services are exposed to the Internet.
 
-The Ingress Controller runs in its own pod on the customer’s AKS. AGIC monitors a subset of Kubernetes Resources for changes. The state of the AKS cluster is translated to Application Gateway specific configuration and applied to the [Azure Resource Manager (ARM)](https://docs.microsoft.com/en-us/azure/azure-resource-manager/management/overview).
+The Application Gateway Ingress Controller (AGIC) is a Kubernetes application which makes it possible for [Azure Kubernetes Service (AKS)](https://azure.microsoft.com/services/kubernetes-service/) customers to leverage [Azure Application Gateway](https://azure.microsoft.com/services/application-gateway/) L7 load-balancer to expose pods to the network outside of the Kubernetes cluster, either to the public Internet or to the rest of the internal network. As any other ingress controller, AGIC monitors the Kubernetes cluster it is hosted on and continuously updates an Application Gateway, so that selected services are exposed.
 
-AGIC helps eliminate the need to have another load balancer/public IP in front of the AKS cluster and avoids multiple hops in your datapath before requests reach the AKS cluster. Application Gateway talks to pods using their private IP directly and does not require NodePort or KubeProxy services. This also brings better performance to your deployments.
+The Ingress Controller runs in its own pod on the customer’s AKS. AGIC monitors a subset of Kubernetes Resources for changes. The state of the AKS cluster is translated to Application Gateway specific configuration and applied to the [Azure Resource Manager (ARM)](https://docs.microsoft.com/azure/azure-resource-manager/management/overview).
 
-Ingress Controller is supported exclusively by Standard_v2 and WAF_v2 SKUs, which also brings you autoscaling benefits. Application Gateway can react in response to an increase or decrease in traffic load and scale accordingly, without consuming any resources from your AKS cluster.
+AGIC helps eliminate the need to have another load balancer/public IP in front of the AKS cluster and avoids multiple hops in your datapath before requests reach the AKS cluster. As most other ingress controllers, Application Gateway talks to pods using their private IP directly and does not require NodePort or KubeProxy services. This also brings better performance to your deployments.
+
+Application Gateway Ingress Controller is supported exclusively by Standard_v2 and WAF_v2 SKUs, which also brings you autoscaling benefits. Azure Application Gateway can react in response to an increase or decrease in traffic load and scale accordingly, without consuming any resources from your AKS cluster.
 
 ![agic-architecture](media/agic-architecture.png)
 
-[***Unsupported scenario***](https://docs.microsoft.com/en-us/azure/application-gateway/configuration-infrastructure#supported-user-defined-routes): ***Currently Application Gateway does not support any scenario where 0.0.0.0/0 needs to be redirected through any virtual appliance, a hub/spoke virtual network, or on-premises (forced tunneling).***
+Regardless of which ingress controller is being used, AKS can be deployed in a secure environment with [egress control](https://docs.microsoft.com/en-us/azure/aks/egress-outboundtype). It's done using a UDR with a route 0.0.0.0/0 pointing to a Network Virtual Appliance or any other router/firewall like [Azure Firewall](https://docs.microsoft.com/azure/aks/limit-egress-traffic#restrict-egress-traffic-using-azure-firewall). However, that very same 0.0.0.0/0 route that is required to send traffic from the cluster to the Internet through a firewall is not supported by the Application Gateway v2 SKUs.
 
-[AKS can be deployed in a secure environment with egress control](https://docs.microsoft.com/en-us/azure/aks/egress-outboundtype). It's done using a UDR with a route 0.0.0.0/0 pointing to a Network Virtual Appliance or any other router/firewall like [Azure Firewall](https://docs.microsoft.com/en-us/azure/aks/limit-egress-traffic#restrict-egress-traffic-using-azure-firewall).
+[***Unsupported scenario***](https://docs.microsoft.com/azure/application-gateway/configuration-infrastructure#supported-user-defined-routes): ***Currently Application Gateway does not support any scenario where 0.0.0.0/0 needs to be redirected through any virtual appliance, a hub/spoke virtual network, or on-premises (forced tunneling).***
 
-***Since Application Gateway doesn't support UDR with a route 0.0.0.0/0 and it's a requirement for AKS egress control [you cannot use the same UDR for both subnets](https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/how-tos/networking.md#with-kubenet) (Application Gateway subnet and AKS subnet).***
+***Since Application Gateway doesn't support UDR with a route 0.0.0.0/0 and it's a requirement for AKS egress control [you cannot use the same route table for both subnets](https://github.com/Azure/application-gateway-kubernetes-ingress/blob/master/docs/how-tos/networking.md#with-kubenet) (Application Gateway subnet and AKS subnet).***
 
 ## 4. Network topology
-In a secure deployment Application Gateway and AKS (using egress control) will be on its own subnet and as described above it's not possible to share the same UDR for both of them.
+
+Application Gateway and AKS (using egress control) both required to be deployed in dedicated subnets. In environments without egress filtering you can configure the same Microsoft-managed kubenet route table in both subnets, but if using AKS egress filtering as described above it's not possible to share the same UDR for both of them.
 
 ![AKS-private-cluster-scenario](media/AKS-private-cluster-scenario.jpg)
 
-In this case it's required to create a dedicated UDR for Application Gateway subnet but it brings a challenge to keep the AKS (kubenet) auto managed UDR to be in sync with Application Gateway UDR.
+In this case it's required to create a dedicated UDR for Application Gateway subnet but it brings a challenge to keep the AKS (kubenet) auto managed UDR to be in sync with Application Gateway UDR, so that the Application Gateway can route traffic with destination IPs in the pod address space.
 
 ## 5. Synchronizing AKS egress control UDR with Application Gateway UDR
 
-Every time there is an event of scale in the AKS cluster a new route entry will be automatically created in the AKS UDR with the POD address space of the new Node. This route is required for Application Gateway be able to access the backend POD to proxy the traffic. The same process happen when there is an event of scale-in where an AKS Node is removed from the cluster.
+Every time a new node is added to the AKS cluster a new route will be automatically created in the AKS route table, with the pod address space of the new node. This route is required for Application Gateway to be able to access the backend pod. The same process happen when an AKS node is removed from the cluster.
 
-Using Azure Monitor Alerts is possible to create an Alert Rule to trigger an Automation Account every single time there is a change in the AKS UDR. The Automation Account can receive this event (webhook) and invoke a PowerShell script to sync the desired changes between both UDRs (Application Gateway UDR and AKS UDR).
+Using Azure Monitor Alerts is possible to create an Alert Rule to trigger an Automation Account runbook every single time there is a change in the AKS-managed route table. The Automation Account can receive this event (webhook) and invoke a PowerShell script to sync the desired changes between both route tables (Application Gateway route table and AKS route table).
 
-By following his approach you can safely use AKS egress control with AGIC in a auto managed scenario.
+By following his approach you can have your customer-managed route table applied to the Application Gateway subnet always reflecting the latest state of the cluster.
 
 ## 6. Considerations
 
-This article assume you are using AKS with VMSS not VMs. The PowerShell runbook are filtering the routes based in the name of the VMSS instance name considering it will start with "aks*" and it contains "*vmss*" in the name of each route. Any other route not matching the filter will not be evaluated.
+This article assume you are using AKS with VirtualMachine Scale Sets (VMSS) and not with individual Virtual Machine (VMs), which is anyway the default since a long time. The PowerShell runbook are filtering the routes based on the name of the VMSS instance name considering it will start with "aks*" and it contains "*vmss*" in the name of each route. Any other route not matching the filter will not be evaluated.
 
 ## 7. Automation Account
 
@@ -186,7 +194,6 @@ Create a Azure Monitor Aler Rule to invoke the Runbook for any change/event in A
 13. Under Configure Runbook, Runbook source as User, select the subscription you created the Runbook, under Automation account select the Automation account created previously and under Runbook select the runbook created previously. Now click in Parameters.
 
     ![27](media/27.png)
-
 
 14. Under Parameters, add the Application Gateway UDR Resource Group Name and add the Application Gateway UDR to be kept in sync. Click in OK.
 
