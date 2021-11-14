@@ -14,7 +14,7 @@ Table of Contents
 
 4. [Network topology](#4-network-topology)
 
-5. [Synchronizing AKS egress control UDR with Application Gateway UDR](#4-synchronizing-aks-egress-control-udr-with-application-gateway-udr)
+5. [Synchronizing AKS egress control UDR with Application Gateway UDR](#5-synchronizing-aks-egress-control-udr-with-application-gateway-udr)
 
 6. [Considerations](#6-considerations)
 
