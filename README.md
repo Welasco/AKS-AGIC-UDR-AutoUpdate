@@ -4,7 +4,7 @@ Using AKS kubenet egrees control with AGIC
 Table of Contents
 =================
 
-1. [Network Plugins](#network-plugins)
+1. [Network Plugins](#1-network-plugins)
 
 2. [IP address availability and exhaustion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#2-ip-address-availability-and-exhaustion)
 
@@ -22,7 +22,7 @@ Table of Contents
 
 9. [Confirmation and test](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#9-confirmation-and-test)
 
-10. [Conclusion](#conclusion)
+10. [Conclusion](#10-conclusion)
 
 ## 1. Network Plugins
 
