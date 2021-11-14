@@ -22,7 +22,7 @@ Table of Contents
 
 9. [Confirmation and test](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#9-confirmation-and-test)
 
-10. [Conclusion](https://github.com/Welasco/AKS-AGIC-UDR-AutoUpdate/blob/master/README.md#10-conclusion)
+10. [Conclusion](#conclusion)
 
 ## 1. Network Plugins
 
